@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+
+# Usage: ./master_script.sh <input_file> <output_file>
+
+##############################################################################
+# 1) Checks and usage
+##############################################################################
+
+if [ $# -ne 2 ]; then
+  echo "Usage: $0 <input_file> <output_file>"
+  exit 1
+fi
+
+input_file="$1"
+output_file="$2"
+
+# Make sure the input file exists
+if [ ! -f "$input_file" ]; then
+  echo "Error: Input file '$input_file' not found."
+  exit 1
+fi
+
+# Make sure the output file is not the same as the input file
+if [ "$input_file" = "$output_file" ]; then
+  echo "Error: Input and output files cannot be the same."
+  exit 1
+fi
+
+##############################################################################
+# Prepare temporary files
+##############################################################################
+
+tmp1="$(mktemp)"
+tmp2="$(mktemp)"
+tmp3="$(mktemp)"
+tmp4="$(mktemp)"
+tmp5="$(mktemp)"
+
+##############################################################################
+# 2) First transformation (from your first snippet):
+#    - Convert empty lines to "| Answer"
+#    - For lines not equal to "| Answer", prepend <br>
+#    - Remove tabs
+#    - Collapse multiple spaces
+##############################################################################
+
+sed \
+  -e 's/^$/| Answer/g' \
+  -e '/^| Answer$/!s/^/<br>/g' \
+  "$input_file" \
+  | tr -d '\t' \
+  | sed -E 's/ {2,}/ /g' \
+  > "$tmp1"
+
+##############################################################################
+# 3) Second transformation (replace standalone <br> with "|")
+##############################################################################
+
+sed 's/^[[:space:]]*<br>[[:space:]]*$/|/' "$tmp1" > "$tmp2"
+
+##############################################################################
+# 4) Third transformation (remove duplicate lines that are exactly "|")
+##############################################################################
+
+awk '
+function is_pipe(line) {
+    gsub(/^[ \t\r\n]+|[ \t\r\n]+$/, "", line)
+    return (line == "|")
+}
+{
+    if (is_pipe($0) && is_pipe(prev)) {
+        next
+    }
+    print
+    prev = $0
+}
+' "$tmp2" > "$tmp3"
+
+##############################################################################
+# 5) Fourth transformation (collapse all lines into as few lines as possible,
+#    inserting a newline immediately after a line containing only "|")
+##############################################################################
+
+{
+  acc=""
+  while IFS= read -r line; do
+    trimmed="$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    if [ "$trimmed" = "|" ]; then
+      acc="$acc|"
+      echo "$acc"
+      acc=""
+    else
+      acc="$acc$trimmed"
+    fi
+  done < "$tmp3"
+  # If something is left in acc, print it
+  if [ -n "$acc" ]; then
+    echo "$acc"
+  fi
+} > "$tmp4"
+
+##############################################################################
+# 6) Fifth transformation (remove the first occurrence of <br> in each line)
+##############################################################################
+
+sed 's/<br>//' "$tmp4" > "$tmp5"
+
+##############################################################################
+# Move final output into the requested output file
+##############################################################################
+
+mv "$tmp5" "$output_file"
+
+##############################################################################
+# Clean up temporary files
+##############################################################################
+
+rm -f "$tmp1" "$tmp2" "$tmp3" "$tmp4"
+
+echo "All transformations complete. Output saved to '$output_file'."
