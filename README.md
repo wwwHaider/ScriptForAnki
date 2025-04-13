@@ -21,8 +21,7 @@ if it's like this:
 
 QUESTION
 
-
-
+\n
 OPTION
 
 OPTION
